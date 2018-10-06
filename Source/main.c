@@ -77,7 +77,7 @@ static int get_work_path(char* buff, int maxlen) {
     if (pos != 0) {                   
        *pos = '\0';                   
     }              
-                   
+    sprintf(buff, "/usr/local");
     return 0;
 }            
 static char workpath[255];
@@ -87,15 +87,17 @@ extern int find_pid_by_name( char* ProcName, int* foundpid);
 void send_signal_to_python_process(int signal) {
     int i, rv;
     if (pid_count == 0) {
-        rv = find_pid_by_name( "python2.7", py_pids);
+        rv = find_pid_by_name( "python3", py_pids);
         for(i=0; py_pids[i] != 0; i++) {
             log2file("found python pid: %d\n", py_pids[i]);
             pid_count++;
         }
+        log2file("pid_count = %d\n", pid_count);
     }
     if (pid_count > 0) {
         for(i=0; i<pid_count; i++) {
             if (kill(py_pids[i], signal) != 0) { //maybe pid is invalid
+                log2file("kill returned != 0\n");
                 pid_count = 0;
                 break;
             }
@@ -116,8 +118,10 @@ void* threadfunc(char* arg) {
 int load_python_view() {
     int ret;
     char* cmd = (char*)malloc(255);
-    sprintf(cmd, "cd %s/BakeBit/Software/Python && python %s 2>&1 | tee /tmp/nanoled-python.log", workpath, python_file);
+    log2file("workpath=%s \n", workpath);
+    sprintf(cmd, "cd %s/hmi && python3 %s 2>&1 | tee /tmp/nanoled-python.log", workpath, python_file);
     ret = pthread_create(&view_thread_id, NULL, (void*)threadfunc,cmd);
+    log2file("pthread_create=%d \n", ret);
     if(ret) {
         log2file("create pthread error \n");
         return 1;
@@ -126,60 +130,31 @@ int load_python_view() {
 }
 
 int find_pid_by_name( char* ProcName, int* foundpid) {
-    DIR             *dir;
-    struct dirent   *d;
-    int             pid, i;
-    char            *s;
-    int pnlen;
+    int pid;
+    FILE *fp;
+    char out[1035];
 
-    i = 0;
-    foundpid[0] = 0;
-    pnlen = strlen(ProcName);
-
-    /* Open the /proc directory. */
-    dir = opendir("/proc");
-    if (!dir)
-    {
-        log2file("cannot open /proc");
+    /* Open the command for reading. */
+    fp = popen("/usr/bin/pgrep python3", "r");
+    if (fp == NULL) {
+        log2file("Failed to run command\n" );
         return -1;
     }
-
-    /* Walk through the directory. */
-    while ((d = readdir(dir)) != NULL) {
-
-        char exe [PATH_MAX+1];
-        char path[PATH_MAX+1];
-        int len;
-        int namelen;
-
-        /* See if this is a process */
-        if ((pid = atoi(d->d_name)) == 0)       continue;
-
-        snprintf(exe, sizeof(exe), "/proc/%s/exe", d->d_name);
-        if ((len = readlink(exe, path, PATH_MAX)) < 0)
-            continue;
-        path[len] = '\0';
-
-        /* Find ProcName */
-        s = strrchr(path, '/');
-        if(s == NULL) continue;
-        s++;
-
-        /* we don't need small name len */
-        namelen = strlen(s);
-        if(namelen < pnlen)     continue;
-
-        if(!strncmp(ProcName, s, pnlen)) {
-            /* to avoid subname like search proc tao but proc taolinke matched */
-            if(s[pnlen] == ' ' || s[pnlen] == '\0') {
-                foundpid[i] = pid;
-                i++;
-            }
+    else
+    {
+        /* Read the output a line at a time - output it. */
+        while (fgets(out, sizeof(out)-1, fp) != NULL) {
+            log2file("%s\n", out);
+            sscanf(out, "%d", &pid);
+            log2file("python3 pid=%d\n", pid);
         }
+        
     }
-    foundpid[i] = 0;
-    closedir(dir);
-    return  0;
+    
+    foundpid[0] = pid;
+    /* close */
+    pclose(fp);
+    return 0;
 }
 
 int init_gpio(int gpio, char* edge) {
