@@ -35,7 +35,7 @@ THE SOFTWARE.
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <signal.h>
-#include <time.h>  
+#include <time.h>
 #include <pthread.h>
 #include <dirent.h>
 #include <stdarg.h>
@@ -66,23 +66,26 @@ void log2file(const char *fmt, ...)
 //}}
 
 const char* python_file = "bakebit_nanohat_oled.py";
+
 static int get_work_path(char* buff, int maxlen) {
     ssize_t len = readlink("/proc/self/exe", buff, maxlen);
-    if (len == -1 || len == maxlen) {                         
-        return -1;                                            
-    }                                
+    if (len == -1 || len == maxlen) {
+        return -1;
+    }
     buff[len] = '\0';
-                        
+
     char *pos = strrchr(buff, '/');
-    if (pos != 0) {                   
-       *pos = '\0';                   
-    }              
+    if (pos != 0) {
+       *pos = '\0';
+    }
     sprintf(buff, "/usr/local");
     return 0;
-}            
+}
+
 static char workpath[255];
 static int py_pids[128];
 static int pid_count = 0;
+
 extern int find_pid_by_name( char* ProcName, int* foundpid);
 void send_signal_to_python_process(int signal) {
     int i, rv;
@@ -106,6 +109,7 @@ void send_signal_to_python_process(int signal) {
 }
 
 pthread_t view_thread_id = 0;
+
 void* threadfunc(char* arg) {
     pthread_detach(pthread_self());
     if (arg) {
@@ -148,9 +152,9 @@ int find_pid_by_name( char* ProcName, int* foundpid) {
             sscanf(out, "%d", &pid);
             log2file("python3 pid=%d\n", pid);
         }
-        
+
     }
-    
+
     foundpid[0] = pid;
     /* close */
     pclose(fp);
@@ -206,27 +210,50 @@ void release_gpio(int gpio) {
 static int gpio_d0=0, gpio_d1=2, gpio_d2=3;
 static int epfd=-1;
 static int fd_d0=-1, fd_d1=-1, fd_d2=-1;
-void sig_handler( int sig)
+
+void shutdown(void)
+{
+	send_signal_to_python_process(SIGTERM);
+
+	// Release gpios
+	if (epfd>=0) {
+        close(epfd);
+    }
+    if (fd_d0>=0) {
+        close(fd_d0);
+        release_gpio(gpio_d0);
+    }
+    if (fd_d1>=0) {
+        close(fd_d1);
+        release_gpio(gpio_d1);
+    }
+    if (fd_d2>=0) {
+        close(fd_d2);
+        release_gpio(gpio_d2);
+    }
+	exit(0);
+}
+
+void sig_handler(int sig)
 {
     if(sig == SIGINT){
-        if (epfd>=0) {
-            close(epfd);
-        }
-        if (fd_d0>=0) {
-            close(fd_d0);
-            release_gpio(gpio_d0);
-        }
-        if (fd_d1>=0) {
-            close(fd_d1);
-            release_gpio(gpio_d1);
-        }
-        if (fd_d2>=0) {
-            close(fd_d2);
-            release_gpio(gpio_d2);
-        }
         log2file("ctrl+c has been keydownd\n");
-        exit(0);
     }
+	else if(sig == SIGTERM)
+		log2file("SIGTERM has been intercepted!\n");
+	shutdown();
+}
+
+void catch_sigterm()
+{
+	if (signal(SIGTERM, sig_handler) == SIG_ERR)
+		log2file("\nCan't catch SIGTERM\n");
+}
+
+void catch_sigint()
+{
+	if (signal(SIGINT, sig_handler) == SIG_ERR)
+		log2file("\nCan't catch SIGINT\n");
 }
 
 int main(int argc, char** argv) {
@@ -298,6 +325,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+	catch_sigterm();
+	catch_sigint();
+
     load_python_view();
     while (1) {
         n = epoll_wait(epfd, events, 10, 15);
@@ -333,6 +363,7 @@ int main(int argc, char** argv) {
         }
     }
 
+	log2file("Exiting\n");
     return 0;
 }
 

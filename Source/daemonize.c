@@ -71,7 +71,7 @@ void daemonize(const char *cmd)
     } else if (pid != 0) /* parent */ {
         exit(0);
     }
-    
+
     setsid();
 
     /*
@@ -84,7 +84,7 @@ void daemonize(const char *cmd)
         log2file("%s: can't ignore SIGHUP\n");
         exit(1);
     }
-    
+
     if ((pid = fork()) < 0) {
         log2file("%s: can't fork\n", cmd);
         exit(1);
@@ -107,7 +107,7 @@ void daemonize(const char *cmd)
     if (rl.rlim_max == RLIM_INFINITY) {
         rl.rlim_max = 1024;
     }
-    
+
     for (i = 0; (unsigned int)i < rl.rlim_max; i++) {
         close(i);
     }
