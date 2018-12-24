@@ -108,6 +108,30 @@ void send_signal_to_python_process(int signal) {
     }
 }
 
+void send_signal_to_pid(int signal, int pid) {
+	if (kill(pid, signal) != 0) { //maybe pid is invalid
+    	log2file("kill returned != 0\n");
+		pid_count = 0;
+	}
+}
+
+void search_python_process_pid(void)
+{
+	int i, rv;
+	if (pid_count == 0) {
+        rv = find_pid_by_name( "python3", py_pids);
+        for(i=0; py_pids[i] != 0; i++) {
+            log2file("found python pid: %d\n", py_pids[i]);
+            pid_count++;
+        }
+        log2file("pid_count = %d\n", pid_count);
+    }
+	if(pid_count == 0) { // No pids found
+        log2file("Cannot find python process pid.\n");
+		shutdown();
+	}
+}
+
 pthread_t view_thread_id = 0;
 
 void* threadfunc(char* arg) {
@@ -329,6 +353,7 @@ int main(int argc, char** argv) {
 	catch_sigint();
 
     load_python_view();
+	search_python_process_pid();
     while (1) {
         n = epoll_wait(epfd, events, 10, 15);
 
@@ -339,7 +364,7 @@ int main(int argc, char** argv) {
                     log2file("k1 events: %c\n", ch);
 
                     if (ch == '1') {
-                        send_signal_to_python_process(SIGUSR1);
+                        send_signal_to_pid(SIGUSR1, py_pids[0]);
                     }
                 }
             } else if (events[i].data.fd == ev_d1.data.fd) {
@@ -348,7 +373,7 @@ int main(int argc, char** argv) {
                     log2file("k2 events: %c\n", ch);
 
                     if (ch == '1') {
-                        send_signal_to_python_process(SIGUSR2);
+                        send_signal_to_pid(SIGUSR2, py_pids[0]);
                     }
                 }
             } else if (events[i].data.fd == ev_d2.data.fd) {
@@ -356,7 +381,7 @@ int main(int argc, char** argv) {
                 if (read(fd_d2, &ch, 1)>0) {
                     log2file("k3 events: %c\n", ch);
                     if (ch == '1') {
-                        send_signal_to_python_process(SIGALRM);
+                        send_signal_to_pid(SIGALRM, py_pids[0]);
                     }
                 }
             }
